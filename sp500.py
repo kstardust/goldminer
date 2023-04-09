@@ -1,5 +1,4 @@
 import json
-
 import pandas as pd
 import sqlite3
 import yahooquery
@@ -10,7 +9,6 @@ import datetime
 import logging
 import setting
 from dataclasses import dataclass
-from YFTickerProxyWrapper import TickerProxyWrapper
 
 
 @dataclass
