@@ -1,6 +1,9 @@
+import json
+
 import pandas as pd
 import pymongo
 import yfinance
+import yahooquery
 import requests
 import multiprocessing
 from multiprocessing.pool import ThreadPool
@@ -20,7 +23,7 @@ class Stock:
 
 class GoldMinerSP500Stats:
 
-    COL_NAME = 'sp500_stats'
+    COL_NAME = 'sp500_stats_'
     UselessTickerStatFields = ['upgradeDowngradeHistory']
 
     def __init__(self):
@@ -30,8 +33,8 @@ class GoldMinerSP500Stats:
         self.sp500Json = None
         self.tickers = None
 
-    def GetDBCol(self):
-        return self.database[self.COL_NAME]
+    def GetDBCol(self, date):
+        return self.database[self.COL_NAME + date.strftime('%Y%m%d')]
 
     def GetSP500(self):
         Resp = requests.get('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', proxies={"https": setting.YF_PROXY})
@@ -75,13 +78,18 @@ class GoldMinerSP500Stats:
             while True:
                 if retries == 0:
                     self.logger.error(f"max retries reached, exit.")
-                    exit(-1)
+                    return {}
                 try:
-                    t = TickerProxyWrapper(yfinance.Ticker(symbol), setting.YF_PROXY)
-                    result = t.stats()
-                    if not result:
+                    t = yahooquery.Ticker(symbol)
+                    # yfinance is not working anymore
+                    # t = TickerProxyWrapper(yfinance.Ticker(symbol), setting.YF_PROXY)
+                    # result = t.stats()
+
+                    # yahooquery.Ticker.all_modules[symbol] is equivalent to yfinance.Ticker.status
+                    result = t.all_modules[symbol]
+                    if not isinstance(result, dict):
                         retries -= 1
-                        self.logger.error(f"invalid stat, retrie: {retries}")
+                        self.logger.error(f"invalid stat, {result}, retrie: {retries}")
                         continue
 
                     for key in self.UselessTickerStatFields:
@@ -104,13 +112,13 @@ class GoldMinerSP500Stats:
 
     def UseDataofDate(self, date):
 
-        if isinstance(date, datetime.datetime):
-            date = date.strftime("%Y-%m-%d")
+        result = self.GetDBCol(date).find({}, {'_id': 0})
+        tickers = {}
+        for ticker in result:
+            tickers.update({ticker['symbol']: ticker['data']})
 
-        result = self.GetDBCol().find_one({'date': date})
         if result:
-            self.tickers = result['tickers']
-            self.sp500Json = result['sp500']
+            self.tickers = tickers
             return True
 
         return False
@@ -132,20 +140,10 @@ class GoldMinerSP500Stats:
         now = datetime.datetime.now()
         date = now.strftime("%Y-%m-%d")
 
-        self.GetDBCol().update_one(
-            {
-                'date': date
-            },
-            {
-                '$set': {
-                    'sp500': self.sp500Json,
-                    'tickers': self.tickers,
-                    'save_time': now,
-                    'date': date,
-                }
-            },
-            upsert=True
+        self.GetDBCol(now).insert_many(
+            [{'symbol': k, 'data': v} for k, v in self.tickers.items()]
         )
+
         self.logger.info(f"data of {date} has been written to database.")
 
 

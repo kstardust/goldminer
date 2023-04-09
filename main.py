@@ -59,6 +59,7 @@ class PEFilter(GoldFilterBase):
         maxPE = self.GetMaxPE()
         peSum = 0
         tickerCount = 0
+        peCount = 0
         for ticker, data in self.input.items():
             summaryDetail = data.get('summaryDetail')
 
@@ -69,7 +70,7 @@ class PEFilter(GoldFilterBase):
             pe = summaryDetail.get('trailingPE')
             if pe is None:
                 self.logger.error(f"cannot fetch meaningful PE of {ticker}")
-                continue
+                pe = None
 
             divRate = summaryDetail.get('dividendRate')
             if divRate is None:
@@ -81,15 +82,17 @@ class PEFilter(GoldFilterBase):
             price2Book = keyStat.get('priceToBook')
             if not price2Book:
                 self.logger.error(f"invalid price to book {ticker}")
-                continue
+                price2Book = None
 
             tickerCount += 1
-            peSum += pe
-            if pe <= maxPE:
-                self.logger.info(f'{ticker} passed, PE {pe}, divRate {divRate / price}, P2B {price2Book}')
-                passedTicker[ticker] = data
+            if pe:
+                peCount += 1
+                peSum += pe
+                if pe <= maxPE:
+                    self.logger.info(f'{ticker} passed, PE {pe}, divRate {divRate / price}, P2B {price2Book}')
+                    passedTicker[ticker] = data
 
-        self.logger.info(f"Total {tickerCount}, the average PE is {peSum / tickerCount}")
+        self.logger.info(f"Total {tickerCount}, the average PE is {peSum / peCount}")
         return passedTicker
 
 
@@ -101,7 +104,7 @@ def PrintData(data, sp500Name):
     n = 0
     for ticker, tickerData in data.items():
         price = tickerData['price']['regularMarketPrice']
-        price2Book = tickerData['defaultKeyStatistics']['priceToBook']
+        price2Book = tickerData['defaultKeyStatistics'].get('priceToBook')
         pe = tickerData['summaryDetail']['trailingPE']
         dividendRate = tickerData['summaryDetail']['dividendRate'] / price
         sector = tickerData['summaryProfile']['sector']
@@ -110,12 +113,12 @@ def PrintData(data, sp500Name):
         df.loc[n] = [sector, name, ticker, price, price2Book, pe, dividendRate]
         n += 1
 
-    df.to_csv("sp500-2022-12-14.csv", index=False)
+    df.to_csv("sp500-2023-04-09.csv", index=False)
 
 
 def main():
     SP500 = sp500.GoldMinerSP500Stats()
-    if not SP500.UseDataofDate("2022-12-14"):
+    if not SP500.UseDataofDate(datetime.datetime.today()):
         logging.getLogger("main").error("error no sp500 data")
         return
 
