@@ -1,8 +1,7 @@
 import json
 
 import pandas as pd
-import pymongo
-import yfinance
+import sqlite3
 import yahooquery
 import requests
 import multiprocessing
@@ -27,14 +26,32 @@ class GoldMinerSP500Stats:
     UselessTickerStatFields = ['upgradeDowngradeHistory']
 
     def __init__(self):
-        self.mongoCli = pymongo.MongoClient(setting.MONGO_URI)
-        self.database = self.mongoCli.get_database(setting.DB_NAME)
+        self.database = sqlite3.connect("goldminer.db")
+        self.cursor = self.database.cursor()
         self.logger = logging.getLogger('GoldMinerSP500Stats')
         self.sp500Json = None
         self.tickers = None
+        self.InitDB()
 
-    def GetDBCol(self, date):
-        return self.database[self.COL_NAME + date.strftime('%Y%m%d')]
+    def InitDB(self):
+        # create a table
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS {}
+                     (symbol TEXT PRIMARY KEY NOT NULL,
+                     value TEXT NOT NULL,
+                     date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL);'''.format(setting.DB_NAME))
+
+        # create an index on the date column
+        self.cursor.execute('''CREATE INDEX IF NOT EXISTS date_index
+                     ON {} (date);'''.format(setting.DB_NAME))
+
+        # commit the changes
+        self.database.commit()
+
+    def GetDB(self):
+        return self.cursor
+
+    def CommitDB(self):
+        self.database.commit()
 
     def GetSP500(self):
         Resp = requests.get('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', proxies={"https": setting.YF_PROXY})
@@ -112,10 +129,11 @@ class GoldMinerSP500Stats:
 
     def UseDataofDate(self, date):
 
-        result = self.GetDBCol(date).find({}, {'_id': 0})
+        result = self.GetDB().execute("SELECT symbol, value FROM {} WHERE date(date) = ?".format(setting.DB_NAME), (date.strftime("%Y-%m-%d"),)).fetchall()
         tickers = {}
         for ticker in result:
-            tickers.update({ticker['symbol']: ticker['data']})
+            print(ticker)
+            tickers.update({ticker[0]: json.loads(ticker[1])})
 
         if result:
             self.tickers = tickers
@@ -140,10 +158,11 @@ class GoldMinerSP500Stats:
         now = datetime.datetime.now()
         date = now.strftime("%Y-%m-%d")
 
-        self.GetDBCol(now).insert_many(
-            [{'symbol': k, 'data': v} for k, v in self.tickers.items()]
+        self.GetDB().executemany(
+            "INSERT INTO {} VALUES (?, ?, ?)".format(setting.DB_NAME), [(k, json.dumps(v), date) for k, v in self.tickers.items()]
         )
 
+        self.CommitDB()
         self.logger.info(f"data of {date} has been written to database.")
 
 

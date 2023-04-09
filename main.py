@@ -1,5 +1,4 @@
 import pandas
-
 import sp500
 import copy
 import datetime
