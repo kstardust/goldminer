@@ -33,10 +33,12 @@ class GoldMinerSP500Stats:
 
     def InitDB(self):
         # create a table
+
         self.cursor.execute('''CREATE TABLE IF NOT EXISTS {}
-                     (symbol TEXT PRIMARY KEY NOT NULL,
-                     value TEXT NOT NULL,
-                     date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL);'''.format(setting.DB_NAME))
+            (symbol TEXT NOT NULL,
+            value TEXT NOT NULL,
+            date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY (symbol, date));'''.format(setting.DB_NAME))
 
         # create an index on the date column
         self.cursor.execute('''CREATE INDEX IF NOT EXISTS date_index
